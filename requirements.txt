@@ -5,5 +5,4 @@ PyPDF2
 chromadb
 gtts
 python-docx
-pyttsx3
-base64
+pyttsx3 
