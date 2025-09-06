@@ -6,4 +6,3 @@ chromadb
 gtts
 python-docx
 pyttsx3
-base64
