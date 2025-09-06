@@ -1,0 +1,70 @@
+/* Elegant Page Background */
+body {
+    background: linear-gradient(135deg, #f0f8ff, #ffffff);
+    margin: 0;
+    padding: 40px 0;
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Central Translator Box */
+.translator-box {
+    background: rgba(255, 255, 255, 0.9);
+    max-width: 760px;
+    margin: 0 auto 40px;
+    padding: 30px 40px;
+    border-radius: 20px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+    text-align: center;
+}
+
+/* Hero Title */
+.main-title {
+    font-size: 36px;
+    font-weight: 700;
+    color: #333366;
+    margin: 0 0 10px;
+}
+
+/* Subtitle with Accent Line */
+.subtitle {
+    font-size: 22px;
+    font-weight: 500;
+    color: #555577;
+    margin-bottom: 25px;
+    position: relative;
+}
+.subtitle::after {
+    content: "";
+    display: block;
+    width: 60px;
+    height: 3px;
+    background: #667eea;
+    margin: 15px auto 0;
+}
+
+/* Prompt label */
+.prompt-label {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: #444444;
+}
+
+/* Buttons polished */
+.stButton > button {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff !important;
+    border: none !important;
+    border-radius: 30px !important;
+    padding: 12px 22px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: all 0.3s ease-in-out;
+}
+.stButton > button:hover {
+    background: linear-gradient(135deg, #43e97b, #38f9d7);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+}

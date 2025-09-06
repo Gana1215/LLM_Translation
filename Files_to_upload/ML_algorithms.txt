@@ -1,0 +1,11 @@
+Machine Learning Algorithms:
+1. Linear Regression: Predicts a continuous target variable based on input features.
+2. Logistic Regression: Used for binary classification tasks.
+3. Decision Trees: Tree-based model for classification and regression.
+4. Random Forest: Ensemble of decision trees for better accuracy.
+5. Support Vector Machine (SVM): Classifies data by finding the optimal hyperplane.
+6. K-Nearest Neighbors (KNN): Classifies based on the majority label of nearest neighbors.
+7. Naive Bayes: Probabilistic classifier based on Bayes theorem.
+8. K-Means: Clustering algorithm for unsupervised learning.
+9. Principal Component Analysis (PCA): Dimensionality reduction technique.
+10. Neural Networks: Models inspired by human brain structure for complex tasks.

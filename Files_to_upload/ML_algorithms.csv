@@ -1,0 +1,11 @@
+Algorithm,Description
+Linear Regression,Predicts a continuous target variable based on input features.
+Logistic Regression,Used for binary classification tasks.
+Decision Trees,Tree-based model for classification and regression.
+Random Forest,Ensemble of decision trees for better accuracy.
+Support Vector Machine (SVM),Classifies data by finding the optimal hyperplane.
+K-Nearest Neighbors (KNN),Classifies based on the majority label of nearest neighbors.
+Naive Bayes,Probabilistic classifier based on Bayes theorem.
+K-Means,Clustering algorithm for unsupervised learning.
+Principal Component Analysis (PCA),Dimensionality reduction technique.
+Neural Networks,Models inspired by human brain structure for complex tasks.
