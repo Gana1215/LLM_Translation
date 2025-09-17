@@ -9,6 +9,7 @@ import google.generativeai as genai
 import base64
 import asyncio
 import edge_tts
+from pydub import AudioSegment  # ✅ for Safari MP3 fix
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -18,8 +19,9 @@ os.makedirs(SPEECH_FOLDER, exist_ok=True)
 
 # ----------------- Load CSS -----------------
 def load_css(file_name):
-    with open(file_name, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    if os.path.exists(file_name):
+        with open(file_name, "r") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css("style.css")
 
@@ -49,28 +51,46 @@ async def generate_edge_speech(text, file_path, voice="mn-MN-YesuiNeural"):
         st.error(f"Edge TTS error: {e}")
         return None
 
+# ✅ Fix MP3 for Safari/iOS playback
+def fix_mp3(input_file):
+    safe_file = input_file.replace(".mp3", "_fixed.mp3")
+    try:
+        sound = AudioSegment.from_file(input_file, format="mp3")
+        sound.export(
+            safe_file,
+            format="mp3",
+            bitrate="192k",
+            parameters=["-ar", "44100"],
+            tags={}
+        )
+        return safe_file
+    except Exception as e:
+        st.error(f"MP3 re-encode failed: {e}")
+        return input_file  # fallback
+
 # Updated text_to_speech function
 def text_to_speech(text, target_lang='en', source_lang='Eng'):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     lang_code = target_lang[:2].capitalize()
-    file_name = f"{source_lang}To{lang_code}{timestamp}.mp3"
-    file_path = os.path.join(SPEECH_FOLDER, file_name)
+    raw_file = os.path.join(SPEECH_FOLDER, f"{source_lang}To{lang_code}{timestamp}.mp3")
 
     try:
         if target_lang.lower() == "mn":
             # Always use Yesui for Mongolian
             voice_code = "mn-MN-YesuiNeural"
             with st.spinner("🎧 Generating Mongolian speech..."):
-                asyncio.run(generate_edge_speech(text, file_path, voice=voice_code))
+                asyncio.run(generate_edge_speech(text, raw_file, voice=voice_code))
         else:
             # gTTS only for supported languages
             tts = gTTS(text=text, lang=target_lang[:2].lower())
-            tts.save(file_path)
+            tts.save(raw_file)
+
+        # ✅ Always re-encode for iOS browsers
+        return fix_mp3(raw_file)
+
     except Exception as e:
         st.error(f"Error generating speech: {e}")
         return None
-
-    return file_path
 
 def extract_text_from_file(file_path):
     if not file_path or not os.path.exists(file_path):
@@ -118,11 +138,7 @@ input_option = st.radio("📝 Choose input method:", ["Direct Text", "Upload Fil
 
 if input_option == "Direct Text":
     st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
-    user_text = st.text_area(
-        "Enter text",
-        height=150,
-        label_visibility="collapsed"
-    )
+    user_text = st.text_area("Enter text", height=150, label_visibility="collapsed")
 else:
     st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader(
@@ -157,19 +173,16 @@ with col2:
     if st.button("🔊 Convert to Speech", key="speech_btn"):
         if st.session_state.translated_text:
             target_lang_code = language.lower()[:2] if language.lower() != "mongolian" else "mn"
-            file_path = text_to_speech(
-                st.session_state.translated_text,
-                target_lang=target_lang_code
-            )
+            file_path = text_to_speech(st.session_state.translated_text, target_lang=target_lang_code)
             if file_path:
                 # --- Read audio once for playback and download ---
                 with open(file_path, "rb") as f:
                     audio_bytes = f.read()
 
-                # --- Play audio (requires user tap, safe on mobile) ---
+                # ✅ Mobile-safe playback
                 st.audio(audio_bytes, format="audio/mp3")
 
-                # --- Mobile-friendly download ---
+                # ✅ Mobile-safe download
                 b64 = base64.b64encode(audio_bytes).decode()
                 href = f'<a href="data:audio/mp3;base64,{b64}" download="{os.path.basename(file_path)}">⬇️ Download Speech</a>'
                 st.markdown(href, unsafe_allow_html=True)
@@ -181,9 +194,4 @@ with col2:
 # -------- Display Translated Text --------
 if st.session_state.translated_text:
     st.markdown("### 📝 Translated Text")
-    st.text_area(
-        "Translated text",
-        st.session_state.translated_text,
-        height=150,
-        label_visibility="collapsed"
-    )
+    st.text_area("Translated text", st.session_state.translated_text, height=150, label_visibility="collapsed")
