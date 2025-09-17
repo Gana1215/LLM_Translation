@@ -118,10 +118,19 @@ input_option = st.radio("📝 Choose input method:", ["Direct Text", "Upload Fil
 
 if input_option == "Direct Text":
     st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
-    user_text = st.text_area("", height=150)
+    user_text = st.text_area(
+        "Enter text",
+        height=150,
+        label_visibility="collapsed"
+    )
 else:
     st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("", type=["txt","pdf","docx","doc","csv","xls","xlsx"], key="file_uploader")
+    uploaded_file = st.file_uploader(
+        "Upload file",
+        type=["txt","pdf","docx","doc","csv","xls","xlsx"],
+        key="file_uploader",
+        label_visibility="collapsed"
+    )
     user_text = ""
     if uploaded_file is not None:
         save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
@@ -157,7 +166,7 @@ with col2:
                 with open(file_path, "rb") as f:
                     audio_bytes = f.read()
 
-                # --- Play audio ---
+                # --- Play audio (requires user tap, safe on mobile) ---
                 st.audio(audio_bytes, format="audio/mp3")
 
                 # --- Mobile-friendly download ---
@@ -172,4 +181,9 @@ with col2:
 # -------- Display Translated Text --------
 if st.session_state.translated_text:
     st.markdown("### 📝 Translated Text")
-    st.text_area("", st.session_state.translated_text, height=150)
+    st.text_area(
+        "Translated text",
+        st.session_state.translated_text,
+        height=150,
+        label_visibility="collapsed"
+    )
