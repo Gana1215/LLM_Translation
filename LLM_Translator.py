@@ -9,7 +9,7 @@ import google.generativeai as genai
 import base64
 import asyncio
 import edge_tts
-from pydub import AudioSegment  # ✅ for Safari MP3 fix
+import subprocess  # ✅ Use ffmpeg for MP3 fix without pydub
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -51,18 +51,20 @@ async def generate_edge_speech(text, file_path, voice="mn-MN-YesuiNeural"):
         st.error(f"Edge TTS error: {e}")
         return None
 
-# ✅ Fix MP3 for Safari/iOS playback
+# ✅ Fix MP3 using ffmpeg (no pydub needed)
 def fix_mp3(input_file):
     safe_file = input_file.replace(".mp3", "_fixed.mp3")
     try:
-        sound = AudioSegment.from_file(input_file, format="mp3")
-        sound.export(
-            safe_file,
-            format="mp3",
-            bitrate="192k",
-            parameters=["-ar", "44100"],
-            tags={}
-        )
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", input_file,
+            "-ar", "44100",       # 44.1kHz
+            "-b:a", "192k",       # 192kbps
+            "-codec:a", "libmp3lame",
+            safe_file
+        ]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return safe_file
     except Exception as e:
         st.error(f"MP3 re-encode failed: {e}")
@@ -85,7 +87,7 @@ def text_to_speech(text, target_lang='en', source_lang='Eng'):
             tts = gTTS(text=text, lang=target_lang[:2].lower())
             tts.save(raw_file)
 
-        # ✅ Always re-encode for iOS browsers
+        # ✅ Always fix for Safari/Chrome iOS
         return fix_mp3(raw_file)
 
     except Exception as e:
@@ -175,7 +177,6 @@ with col2:
             target_lang_code = language.lower()[:2] if language.lower() != "mongolian" else "mn"
             file_path = text_to_speech(st.session_state.translated_text, target_lang=target_lang_code)
             if file_path:
-                # --- Read audio once for playback and download ---
                 with open(file_path, "rb") as f:
                     audio_bytes = f.read()
 
