@@ -7,6 +7,5 @@ gtts
 python-docx
 pyttsx3
 edge-tts
-pydub
 ffmpeg
 
