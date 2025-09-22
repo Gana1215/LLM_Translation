@@ -37,7 +37,8 @@ if "audio_file" not in st.session_state:
 
 # ----------------- Helper Functions -----------------
 def translate_text(text, target_language):
-    prompt = f"Translate the following text to {target_language}:\n{text}"
+    #prompt = f"Translate the following text to {target_language}:\n{text}"
+    prompt = f"Translate the following text to {target_language} naturally and correctly. Output ONLY the translation text, nothing else:\n{text}"
     response = model.generate_content(prompt)
     return response.text
 
