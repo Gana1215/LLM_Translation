@@ -9,10 +9,10 @@ from datetime import datetime
 import google.generativeai as genai
 import base64
 from st_audiorec import st_audiorec
+import whisper
 import tempfile
-import torch
+import librosa
 import soundfile as sf
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -34,13 +34,10 @@ load_css("style.css")
 genai.configure(api_key="YOUR_API_KEY")  # 🔑 Replace with your key
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ----------------- Load Mongolian ASR -----------------
-asr_model_name = "tugstugi/wav2vec2-large-xlsr-53-mongolian"
-processor = Wav2Vec2Processor.from_pretrained(asr_model_name)
-asr_model = Wav2Vec2ForCTC.from_pretrained(asr_model_name)
-asr_model.eval()
+# ----------------- Whisper Model -----------------
+whisper_model = whisper.load_model("base")  # Local Whisper for STT
 
-# ----------------- Session State -----------------
+# ----------------- Session State Init -----------------
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "user_text" not in st.session_state:
@@ -102,17 +99,6 @@ def extract_text_from_file(file_path):
         st.error(f"Error reading file: {e}")
         return ""
 
-def transcribe_audio(file_path):
-    speech, sr = sf.read(file_path)
-    if len(speech.shape) > 1:
-        speech = speech[:, 0]  # Take first channel if stereo
-    input_values = processor(speech, sampling_rate=sr, return_tensors="pt").input_values
-    with torch.no_grad():
-        logits = asr_model(input_values).logits
-    predicted_ids = torch.argmax(logits, dim=-1)
-    transcription = processor.decode(predicted_ids[0])
-    return transcription
-
 # ----------------- Streamlit UI -----------------
 st.markdown('<h2 class="main-title">🌐 Multi-language Translator & TTS</h2>', unsafe_allow_html=True)
 st.markdown('<h3 class="subtitle">✨ Speak, Translate, and Listen</h3>', unsafe_allow_html=True)
@@ -157,13 +143,21 @@ elif input_option == "Voice Recording":
     if wav_audio_data is None:
         st.warning("⚠️ No voice input detected yet.")
     else:
+        # Save temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(wav_audio_data)
             tmp_path = tmp.name
         
         try:
-            # Transcribe with wav2vec2
-            st.session_state.user_text = transcribe_audio(tmp_path).strip()
+            # -------- Resample to 16kHz --------
+            wav, sr = sf.read(tmp_path)
+            if sr != 16000:
+                wav = librosa.resample(wav.astype(float), orig_sr=sr, target_sr=16000)
+                sf.write(tmp_path, wav, 16000)
+
+            # -------- Transcribe with Whisper --------
+            result = whisper_model.transcribe(tmp_path, language="mn")
+            st.session_state.user_text = result.get("text", "").strip()
             
             if st.session_state.user_text:
                 st.success("✅ Voice transcribed successfully!")
