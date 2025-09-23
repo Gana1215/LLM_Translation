@@ -187,4 +187,7 @@ with col2:
         else:
             st.warning("⚠️ Please translate text first before converting to speech.")
 
-# -------- Display Translated Tex
+# -------- Display Translated Text --------
+if st.session_state.translated_text:
+    st.markdown("### 📝 Translated Text")
+    st.text_area("", st.session_state.translated_text, height=150)
