@@ -7,4 +7,9 @@ gtts
 python-docx
 pyttsx3
 edge-tts
-
+streamlit
+streamlit-audiorec
+torch
+transformers
+soundfile
+librosa
