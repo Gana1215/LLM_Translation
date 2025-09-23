@@ -1,16 +1,23 @@
-google-generativeai
-python-dotenv
-langchain
-PyPDF2
-chromadb
-gtts
-python-docx
-pyttsx3
-edge-tts
-streamlit
-streamlit-audiorec
-torch
-transformers
+# --- Core AI & Transformers ---
+transformers>=4.44.0
+torch>=2.3.0
+torchaudio>=2.3.0
+datasets>=2.20.0
+
+# --- Audio Processing ---
 soundfile
 librosa
 
+# --- Streamlit UI ---
+streamlit>=1.36.0
+streamlit-audiorec
+
+# --- Text-to-Speech & File Handling ---
+gtts
+pyttsx3
+edge-tts
+PyPDF2
+python-docx
+
+# --- Data Handling ---
+pandas
