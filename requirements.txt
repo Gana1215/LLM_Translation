@@ -7,4 +7,6 @@ gtts
 python-docx
 pyttsx3
 edge-tts
-
+streamlit
+streamlit-audiorec
+openai-whisper
