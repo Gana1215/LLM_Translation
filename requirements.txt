@@ -9,4 +9,6 @@ pyttsx3
 edge-tts
 streamlit
 streamlit-audiorec
-openai-whisper
+transformers
+torch
+soundfile
