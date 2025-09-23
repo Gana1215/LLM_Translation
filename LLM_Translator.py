@@ -9,8 +9,10 @@ from datetime import datetime
 import google.generativeai as genai
 import base64
 from st_audiorec import st_audiorec
-import whisper
 import tempfile
+import torch
+import soundfile as sf
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -24,7 +26,7 @@ def load_css(file_name):
         with open(file_name, "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
-        pass  # skip if style.css missing
+        pass
 
 load_css("style.css")
 
@@ -32,10 +34,13 @@ load_css("style.css")
 genai.configure(api_key="YOUR_API_KEY")  # 🔑 Replace with your key
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ----------------- Whisper Model -----------------
-whisper_model = whisper.load_model("base")  # Local Whisper for STT
+# ----------------- Load Mongolian ASR -----------------
+asr_model_name = "tugstugi/wav2vec2-large-xlsr-53-mongolian"
+processor = Wav2Vec2Processor.from_pretrained(asr_model_name)
+asr_model = Wav2Vec2ForCTC.from_pretrained(asr_model_name)
+asr_model.eval()
 
-# ----------------- Session State Init -----------------
+# ----------------- Session State -----------------
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "user_text" not in st.session_state:
@@ -97,6 +102,17 @@ def extract_text_from_file(file_path):
         st.error(f"Error reading file: {e}")
         return ""
 
+def transcribe_audio(file_path):
+    speech, sr = sf.read(file_path)
+    if len(speech.shape) > 1:
+        speech = speech[:, 0]  # Take first channel if stereo
+    input_values = processor(speech, sampling_rate=sr, return_tensors="pt").input_values
+    with torch.no_grad():
+        logits = asr_model(input_values).logits
+    predicted_ids = torch.argmax(logits, dim=-1)
+    transcription = processor.decode(predicted_ids[0])
+    return transcription
+
 # ----------------- Streamlit UI -----------------
 st.markdown('<h2 class="main-title">🌐 Multi-language Translator & TTS</h2>', unsafe_allow_html=True)
 st.markdown('<h3 class="subtitle">✨ Speak, Translate, and Listen</h3>', unsafe_allow_html=True)
@@ -146,9 +162,8 @@ elif input_option == "Voice Recording":
             tmp_path = tmp.name
         
         try:
-            # Transcribe with Whisper
-            result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian
-            st.session_state.user_text = result.get("text", "").strip()
+            # Transcribe with wav2vec2
+            st.session_state.user_text = transcribe_audio(tmp_path).strip()
             
             if st.session_state.user_text:
                 st.success("✅ Voice transcribed successfully!")
