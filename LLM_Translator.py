@@ -20,13 +20,16 @@ os.makedirs(SPEECH_FOLDER, exist_ok=True)
 
 # ----------------- Load CSS -----------------
 def load_css(file_name):
-    with open(file_name, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    try:
+        with open(file_name, "r") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass  # skip if style.css missing
 
 load_css("style.css")
 
 # ----------------- Gemini API -----------------
-genai.configure(api_key="YOUR_API_KEY")  # Replace with your key
+genai.configure(api_key="YOUR_API_KEY")  # 🔑 Replace with your key
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ----------------- Whisper Model -----------------
@@ -35,8 +38,6 @@ whisper_model = whisper.load_model("base")  # Local Whisper for STT
 # ----------------- Session State Init -----------------
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
-if "audio_file" not in st.session_state:
-    st.session_state.audio_file = None
 if "user_text" not in st.session_state:
     st.session_state.user_text = ""
 
@@ -114,9 +115,6 @@ input_option = st.radio(
     horizontal=True
 )
 
-# Initialize user_text from session
-user_text = st.session_state.get("user_text", "")
-
 # --------- Direct Text ---------
 if input_option == "Direct Text":
     st.session_state.user_text = st.text_area(
@@ -137,25 +135,36 @@ elif input_option == "Upload File":
 
 # --------- Voice Recording ---------
 elif input_option == "Voice Recording":
+    st.info("🎤 Click **Start** to begin recording and **Stop** to finish.")
     wav_audio_data = st_audiorec()
-    if wav_audio_data is not None:
+
+    if wav_audio_data is None:
+        st.warning("⚠️ No voice input detected yet.")
+    else:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(wav_audio_data)
             tmp_path = tmp.name
         
-        # Transcribe
-        result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian
-        st.session_state.user_text = result["text"]
-        st.success("✅ Voice transcribed successfully!")
-        st.write("📝 Recognized Text:", st.session_state.user_text)
+        try:
+            # Transcribe with Whisper
+            result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian
+            st.session_state.user_text = result.get("text", "").strip()
+            
+            if st.session_state.user_text:
+                st.success("✅ Voice transcribed successfully!")
+                st.write("📝 **Recognized Text:**", st.session_state.user_text)
 
-        # Auto-translate
-        if st.session_state.user_text.strip():
-            try:
-                st.session_state.translated_text = translate_text(st.session_state.user_text, language)
-                st.success("✅ Translation completed!")
-            except Exception as e:
-                st.error(f"Translation failed: {e}")
+                # Auto-translate
+                try:
+                    st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+                    st.success("✅ Translation completed!")
+                except Exception as e:
+                    st.error(f"Translation failed: {e}")
+            else:
+                st.warning("⚠️ No speech recognized. Please try again.")
+
+        except Exception as e:
+            st.error(f"Audio processing failed: {e}")
 
 # -------- Buttons --------
 col1, col2 = st.columns(2)
