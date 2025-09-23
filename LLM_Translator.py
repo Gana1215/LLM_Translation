@@ -2,14 +2,15 @@ import os
 import streamlit as st
 import pandas as pd
 from gtts import gTTS
+import pyttsx3
 import docx
 from PyPDF2 import PdfReader
 from datetime import datetime
 import google.generativeai as genai
 import base64
-import asyncio
-import edge_tts
-import subprocess  # ✅ Use ffmpeg for MP3 fix without pydub
+from st_audiorec import st_audiorec
+import whisper
+import tempfile
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -19,15 +20,17 @@ os.makedirs(SPEECH_FOLDER, exist_ok=True)
 
 # ----------------- Load CSS -----------------
 def load_css(file_name):
-    if os.path.exists(file_name):
-        with open(file_name, "r") as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    with open(file_name, "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css("style.css")
 
 # ----------------- Gemini API -----------------
 genai.configure(api_key="AIzaSyA6f51_kEGieaUmBJ_YngqxIEX9fTSZB1A")  # Replace with your key
 model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ----------------- Whisper Model -----------------
+whisper_model = whisper.load_model("base")  # Local Whisper for STT
 
 # ----------------- Session State Init -----------------
 if "translated_text" not in st.session_state:
@@ -37,63 +40,29 @@ if "audio_file" not in st.session_state:
 
 # ----------------- Helper Functions -----------------
 def translate_text(text, target_language):
-    #prompt = f"Translate the following text to {target_language}:\n{text}"
-    prompt = f"Translate the following text to {target_language} naturally and correctly. Output ONLY the translation text, nothing else:\n{text}"
+    prompt = f"Translate the following text to {target_language}:\n{text}"
     response = model.generate_content(prompt)
     return response.text
 
-# Edge TTS async function
-async def generate_edge_speech(text, file_path, voice="mn-MN-YesuiNeural"):
-    try:
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(file_path)
-        return file_path
-    except Exception as e:
-        st.error(f"Edge TTS error: {e}")
-        return None
-
-# ✅ Fix MP3 using ffmpeg (no pydub needed)
-def fix_mp3(input_file):
-    safe_file = input_file.replace(".mp3", "_fixed.mp3")
-    try:
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i", input_file,
-            "-ar", "44100",       # 44.1kHz
-            "-b:a", "192k",       # 192kbps
-            "-codec:a", "libmp3lame",
-            safe_file
-        ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return safe_file
-    except Exception as e:
-        st.error(f"MP3 re-encode failed: {e}")
-        return input_file  # fallback
-
-# Updated text_to_speech function
 def text_to_speech(text, target_lang='en', source_lang='Eng'):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     lang_code = target_lang[:2].capitalize()
-    raw_file = os.path.join(SPEECH_FOLDER, f"{source_lang}To{lang_code}{timestamp}.mp3")
+    file_name = f"{source_lang}To{lang_code}{timestamp}.mp3"
+    file_path = os.path.join(SPEECH_FOLDER, file_name)
 
     try:
-        if target_lang.lower() == "mn":
-            # Always use Yesui for Mongolian
-            voice_code = "mn-MN-YesuiNeural"
-            with st.spinner("🎧 Generating Mongolian speech..."):
-                asyncio.run(generate_edge_speech(text, raw_file, voice=voice_code))
-        else:
-            # gTTS only for supported languages
+        if target_lang.lower() != "mongolian":
             tts = gTTS(text=text, lang=target_lang[:2].lower())
-            tts.save(raw_file)
-
-        # ✅ Always fix for Safari/Chrome iOS
-        return fix_mp3(raw_file)
-
+            tts.save(file_path)
+        else:
+            engine = pyttsx3.init()
+            engine.save_to_file(text, file_path)
+            engine.runAndWait()
     except Exception as e:
         st.error(f"Error generating speech: {e}")
         return None
+
+    return file_path
 
 def extract_text_from_file(file_path):
     if not file_path or not os.path.exists(file_path):
@@ -127,7 +96,7 @@ def extract_text_from_file(file_path):
 
 # ----------------- Streamlit UI -----------------
 st.markdown('<h2 class="main-title">🌐 Multi-language Translator & TTS</h2>', unsafe_allow_html=True)
-st.markdown('<h3 class="subtitle">✨ Translate and listen</h3>', unsafe_allow_html=True)
+st.markdown('<h3 class="subtitle">✨ Let us translate and listen</h3>', unsafe_allow_html=True)
 
 # Language Selection
 language = st.selectbox(
@@ -137,26 +106,37 @@ language = st.selectbox(
 )
 
 # Input Method
-input_option = st.radio("📝 Choose input method:", ["Direct Text", "Upload File"], horizontal=True)
+input_option = st.radio("📝 Choose input method:", 
+                        ["Direct Text", "Upload File", "Voice Recording"], 
+                        horizontal=True)
+
+user_text = ""
 
 if input_option == "Direct Text":
     st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
-    user_text = st.text_area("Enter text", height=150, label_visibility="collapsed")
-else:
+    user_text = st.text_area("", height=150)
+
+elif input_option == "Upload File":
     st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader(
-        "Upload file",
-        type=["txt","pdf","docx","doc","csv","xls","xlsx"],
-        key="file_uploader",
-        label_visibility="collapsed"
-    )
-    user_text = ""
+    uploaded_file = st.file_uploader("", type=["txt","pdf","docx","doc","csv","xls","xlsx"], key="file_uploader")
     if uploaded_file is not None:
         save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         user_text = extract_text_from_file(save_path)
         st.success(f"✅ File uploaded and text extracted from: {uploaded_file.name}")
+
+elif input_option == "Voice Recording":
+    st.markdown('<p class="prompt-label">🎤 Record your voice:</p>', unsafe_allow_html=True)
+    wav_audio_data = st_audiorec()
+    if wav_audio_data is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp.write(wav_audio_data)
+            tmp_path = tmp.name
+        result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian Cyrillic
+        user_text = result["text"]
+        st.success("✅ Voice transcribed successfully!")
+        st.write("📝 Recognized Text:", user_text)
 
 # -------- Buttons --------
 col1, col2 = st.columns(2)
@@ -170,7 +150,7 @@ with col1:
             except Exception as e:
                 st.error(f"Translation failed: {e}")
         else:
-            st.error("Please enter text or upload a file to translate.")
+            st.error("Please enter text, upload a file, or record voice to translate.")
 
 with col2:
     if st.button("🔊 Convert to Speech", key="speech_btn"):
@@ -180,15 +160,10 @@ with col2:
             if file_path:
                 with open(file_path, "rb") as f:
                     audio_bytes = f.read()
-
-                # ✅ Mobile-safe playback
                 st.audio(audio_bytes, format="audio/mp3")
-
-                # ✅ Mobile-safe download
                 b64 = base64.b64encode(audio_bytes).decode()
                 href = f'<a href="data:audio/mp3;base64,{b64}" download="{os.path.basename(file_path)}">⬇️ Download Speech</a>'
                 st.markdown(href, unsafe_allow_html=True)
-
                 st.success(f"🎧 Speech generated: {os.path.basename(file_path)}")
         else:
             st.warning("⚠️ Please translate text first before converting to speech.")
@@ -196,4 +171,4 @@ with col2:
 # -------- Display Translated Text --------
 if st.session_state.translated_text:
     st.markdown("### 📝 Translated Text")
-    st.text_area("Translated text", st.session_state.translated_text, height=150, label_visibility="collapsed")
+    st.text_area("", st.session_state.translated_text, height=150)
