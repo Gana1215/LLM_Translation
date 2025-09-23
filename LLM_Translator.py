@@ -220,4 +220,13 @@ with col2:
                     audio_bytes = f.read()
                 st.audio(audio_bytes, format="audio/mp3")
                 b64 = base64.b64encode(audio_bytes).decode()
-                href = f'<a href="data:audio/mp3;base64,{b64}" downl
+                href = f'<a href="data:audio/mp3;base64,{b64}" download="{os.path.basename(file_path)}">⬇️ Download Speech</a>'
+                st.markdown(href, unsafe_allow_html=True)
+                st.success(f"🎧 Speech generated: {os.path.basename(file_path)}")
+        else:
+            st.warning("⚠️ Please translate text first before converting to speech.")
+
+# -------- Display Translated Text --------
+if st.session_state.translated_text:
+    st.markdown("### 📝 Translated Text")
+    st.text_area("Translated text", st.session_state.translated_text, height=150)
