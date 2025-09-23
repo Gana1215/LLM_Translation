@@ -15,6 +15,7 @@ import soundfile as sf
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from st_audiorec import st_audiorec
 import tempfile
+import librosa
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -31,7 +32,7 @@ def load_css(file_name):
 load_css("style.css")
 
 # ----------------- Gemini API -----------------
-genai.configure(api_key="YOUR_API_KEY")  # Replace with your key
+genai.configure(api_key="YOUR_API_KEY")  # replace with your real key
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ----------------- Wav2Vec2 STT Model -----------------
@@ -49,11 +50,18 @@ if "user_text" not in st.session_state:
 
 # ----------------- Helper Functions -----------------
 def translate_text(text, target_language):
-    prompt = f"Translate the following text to {target_language} naturally and correctly. Output ONLY the translation text, nothing else:\n{text}"
-    response = model.generate_content(prompt)
-    return response.text
+    prompt = f"Translate the following text to {target_language} naturally and correctly. Output ONLY the translation:\n{text}"
+    try:
+        response = model.generate_content(prompt)
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+        else:
+            st.error("⚠️ Translation API returned empty result.")
+            return ""
+    except Exception as e:
+        st.error(f"Translation failed: {e}")
+        return ""
 
-# Edge TTS async function
 async def generate_edge_speech(text, file_path, voice="mn-MN-YesuiNeural"):
     try:
         communicate = edge_tts.Communicate(text, voice)
@@ -142,10 +150,11 @@ input_option = st.radio(
     horizontal=True
 )
 
-# -------- Direct Text or File Upload --------
+# -------- Direct Text or File Upload or Voice --------
 if input_option == "Direct Text":
     st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
-    st.session_state.user_text = st.text_area("Enter text", height=150)
+    st.session_state.user_text = st.text_area("Enter text", value=st.session_state.user_text, height=150)
+
 elif input_option == "Upload File":
     st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Upload file", type=["txt","pdf","docx","doc","csv","xls","xlsx"])
@@ -154,7 +163,8 @@ elif input_option == "Upload File":
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.session_state.user_text = extract_text_from_file(save_path)
-        st.success(f"✅ File uploaded and text extracted from: {uploaded_file.name}")
+        st.success(f"✅ File uploaded and text extracted: {uploaded_file.name}")
+
 elif input_option == "Voice Recording":
     st.info("🎤 Click **Start** to record and **Stop** to finish.")
     wav_audio_data = st_audiorec()
@@ -165,34 +175,36 @@ elif input_option == "Voice Recording":
         try:
             speech, sr = sf.read(tmp_path)
             if sr != 16000:
-                # Resample to 16kHz
-                import librosa
                 speech = librosa.resample(speech, orig_sr=sr, target_sr=16000)
             input_values = processor(speech, sampling_rate=16000, return_tensors="pt").input_values
             with torch.no_grad():
                 logits = stt_model(input_values).logits
             predicted_ids = torch.argmax(logits, dim=-1)
             transcription = processor.batch_decode(predicted_ids)[0]
+
             st.session_state.user_text = transcription
             st.success("✅ Voice transcribed successfully!")
-            st.text_area("📝 Recognized Text:", st.session_state.user_text, height=150)
         except Exception as e:
             st.error(f"Audio processing failed: {e}")
     else:
         st.warning("⚠️ No voice input detected yet.")
+
+# -------- Always show recognized/input text --------
+if st.session_state.user_text.strip():
+    st.markdown("### 📝 Input / Recognized Text")
+    st.text_area("Input Text", st.session_state.user_text, height=150)
 
 # -------- Buttons --------
 col1, col2 = st.columns(2)
 with col1:
     if st.button("🌐 Translate"):
         if st.session_state.user_text.strip() != "":
-            try:
-                st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+            st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+            if st.session_state.translated_text:
                 st.success("✅ Translation completed!")
-            except Exception as e:
-                st.error(f"Translation failed: {e}")
         else:
             st.error("Please enter text, upload a file, or record voice to translate.")
+
 with col2:
     if st.button("🔊 Convert to Speech"):
         if st.session_state.translated_text:
