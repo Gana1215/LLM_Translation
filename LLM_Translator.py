@@ -37,6 +37,8 @@ if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "audio_file" not in st.session_state:
     st.session_state.audio_file = None
+if "user_text" not in st.session_state:
+    st.session_state.user_text = ""
 
 # ----------------- Helper Functions -----------------
 def translate_text(text, target_language):
@@ -106,16 +108,21 @@ language = st.selectbox(
 )
 
 # Input Method
-input_option = st.radio("📝 Choose input method:", 
-                        ["Direct Text", "Upload File", "Voice Recording"], 
-                        horizontal=True)
+input_option = st.radio(
+    "📝 Choose input method:", 
+    ["Direct Text", "Upload File", "Voice Recording"], 
+    horizontal=True
+)
 
 user_text = ""
 
+# --------- Direct Text ---------
 if input_option == "Direct Text":
     st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
     user_text = st.text_area("", height=150)
+    st.session_state.user_text = user_text
 
+# --------- File Upload ---------
 elif input_option == "Upload File":
     st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("", type=["txt","pdf","docx","doc","csv","xls","xlsx"], key="file_uploader")
@@ -124,8 +131,10 @@ elif input_option == "Upload File":
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         user_text = extract_text_from_file(save_path)
+        st.session_state.user_text = user_text
         st.success(f"✅ File uploaded and text extracted from: {uploaded_file.name}")
 
+# --------- Voice Recording ---------
 elif input_option == "Voice Recording":
     st.markdown('<p class="prompt-label">🎤 Record your voice:</p>', unsafe_allow_html=True)
     wav_audio_data = st_audiorec()
@@ -133,19 +142,30 @@ elif input_option == "Voice Recording":
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(wav_audio_data)
             tmp_path = tmp.name
+        
+        # Transcribe
         result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian Cyrillic
         user_text = result["text"]
+        st.session_state.user_text = user_text
         st.success("✅ Voice transcribed successfully!")
         st.write("📝 Recognized Text:", user_text)
+
+        # Auto-translate immediately
+        if user_text.strip() != "":
+            try:
+                st.session_state.translated_text = translate_text(user_text, language)
+                st.success("✅ Translation completed!")
+            except Exception as e:
+                st.error(f"Translation failed: {e}")
 
 # -------- Buttons --------
 col1, col2 = st.columns(2)
 
 with col1:
     if st.button("🌐 Translate", key="translate_btn"):
-        if user_text.strip() != "":
+        if st.session_state.user_text.strip() != "":
             try:
-                st.session_state.translated_text = translate_text(user_text, language)
+                st.session_state.translated_text = translate_text(st.session_state.user_text, language)
                 st.success("✅ Translation completed!")
             except Exception as e:
                 st.error(f"Translation failed: {e}")
