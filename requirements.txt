@@ -9,7 +9,7 @@ pyttsx3
 edge-tts
 streamlit
 streamlit-audiorec
-transformers
-torch
+transformers==4.44.2
+torch==2.2.0
 soundfile
 librosa
