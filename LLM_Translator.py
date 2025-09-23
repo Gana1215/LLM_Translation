@@ -128,4 +128,96 @@ def extract_text_from_file(file_path):
             st.error("Unsupported file type")
             return ""
     except Exception as e:
-        st.error(f"Error reading fi
+        st.error(f"Error reading file: {e}")
+        return ""
+
+# ----------------- Streamlit UI -----------------
+st.markdown('<h2 class="main-title">🌐 Multi-language Translator & TTS</h2>', unsafe_allow_html=True)
+st.markdown('<h3 class="subtitle">✨ Translate and listen</h3>', unsafe_allow_html=True)
+
+# Language Selection
+language = st.selectbox(
+    "🌍 Select target language for translation:",
+    ["English", "French", "Spanish", "German", "Chinese", "Japanese", "Russian", "Mongolian"],
+    index=0
+)
+
+# Input Method
+input_option = st.radio(
+    "📝 Choose input method:",
+    ["Direct Text", "Upload File", "Voice Recording"],
+    horizontal=True
+)
+
+# -------- Direct Text --------
+if input_option == "Direct Text":
+    st.markdown('<p class="prompt-label">✍️ Enter your text here:</p>', unsafe_allow_html=True)
+    st.session_state.user_text = st.text_area("Enter text", value=st.session_state.user_text, height=150)
+
+# -------- File Upload --------
+elif input_option == "Upload File":
+    st.markdown('<p class="prompt-label">📁 Upload your file here:</p>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("Upload file", type=["txt","pdf","docx","doc","csv","xls","xlsx"])
+    if uploaded_file is not None:
+        save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
+        with open(save_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.session_state.user_text = extract_text_from_file(save_path)
+        st.success(f"✅ File uploaded and text extracted: {uploaded_file.name}")
+
+# -------- Voice Recording --------
+elif input_option == "Voice Recording":
+    st.info("🎤 Click **Start** to record and **Stop** to finish.")
+    wav_audio_data = st_audiorec()
+    if wav_audio_data is not None:
+        st.session_state.wav_audio_data = wav_audio_data
+
+    if st.session_state.wav_audio_data:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp.write(st.session_state.wav_audio_data)
+            tmp_path = tmp.name
+        try:
+            speech, sr = sf.read(tmp_path)
+            if sr != 16000:
+                speech = librosa.resample(speech, orig_sr=sr, target_sr=16000)
+            input_values = processor(speech, sampling_rate=16000, return_tensors="pt").input_values
+            with torch.no_grad():
+                logits = stt_model(input_values).logits
+            predicted_ids = torch.argmax(logits, dim=-1)
+            transcription = processor.batch_decode(predicted_ids)[0]
+
+            st.session_state.user_text = transcription
+            st.success("✅ Voice transcribed successfully!")
+            st.write(f"DEBUG: Transcription length={len(transcription)}")
+        except Exception as e:
+            st.error(f"Audio processing failed: {e}")
+    else:
+        st.warning("⚠️ No voice input detected yet. Make sure you clicked Start/Stop.")
+
+# -------- Always display recognized/input text --------
+if st.session_state.user_text.strip():
+    st.markdown("### 📝 Input / Recognized Text")
+    st.text_area("Input Text", st.session_state.user_text, height=150)
+
+# -------- Buttons --------
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("🌐 Translate"):
+        if st.session_state.user_text.strip() != "":
+            st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+            if st.session_state.translated_text:
+                st.success("✅ Translation completed!")
+        else:
+            st.error("Please enter text, upload a file, or record voice to translate.")
+
+with col2:
+    if st.button("🔊 Convert to Speech"):
+        if st.session_state.translated_text:
+            target_lang_code = language.lower()[:2] if language.lower() != "mongolian" else "mn"
+            file_path = text_to_speech(st.session_state.translated_text, target_lang=target_lang_code)
+            if file_path:
+                with open(file_path, "rb") as f:
+                    audio_bytes = f.read()
+                st.audio(audio_bytes, format="audio/mp3")
+                b64 = base64.b64encode(audio_bytes).decode()
+                href = f'<a href="data:audio/mp3;base64,{b64}" downl
