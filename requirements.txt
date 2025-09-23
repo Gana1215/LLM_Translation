@@ -12,5 +12,4 @@ streamlit-audiorec
 transformers
 torch
 soundfile
-openai-whisper
 librosa
