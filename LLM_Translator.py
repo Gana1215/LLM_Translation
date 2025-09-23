@@ -178,17 +178,21 @@ elif input_option == "Voice Recording":
             tmp_path = tmp.name
         try:
             speech, sr = sf.read(tmp_path)
-            if sr != 16000:
-                speech = librosa.resample(speech, orig_sr=sr, target_sr=16000)
-            input_values = processor(speech, sampling_rate=16000, return_tensors="pt").input_values
-            with torch.no_grad():
-                logits = stt_model(input_values).logits
-            predicted_ids = torch.argmax(logits, dim=-1)
-            transcription = processor.batch_decode(predicted_ids)[0]
 
-            st.session_state.user_text = transcription
-            st.success("✅ Voice transcribed successfully!")
-            st.write(f"DEBUG: Transcription length={len(transcription)}")
+            if len(speech) == 0:
+                st.error("⚠️ No audio detected. Please record again or upload a valid file.")
+            else:
+                if sr != 16000:
+                    speech = librosa.resample(speech, orig_sr=sr, target_sr=16000)
+                input_values = processor(speech, sampling_rate=16000, return_tensors="pt").input_values
+                with torch.no_grad():
+                    logits = stt_model(input_values).logits
+                predicted_ids = torch.argmax(logits, dim=-1)
+                transcription = processor.batch_decode(predicted_ids)[0]
+
+                st.session_state.user_text = transcription
+                st.success("✅ Voice transcribed successfully!")
+                st.write(f"DEBUG: Transcription length={len(transcription)}")
         except Exception as e:
             st.error(f"Audio processing failed: {e}")
     else:
