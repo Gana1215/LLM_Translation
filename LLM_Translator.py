@@ -9,10 +9,11 @@ from datetime import datetime
 import google.generativeai as genai
 import base64
 from st_audiorec import st_audiorec
-import whisper
 import tempfile
 import librosa
 import soundfile as sf
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+import torch
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
@@ -26,7 +27,7 @@ def load_css(file_name):
         with open(file_name, "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
-        pass
+        pass  # skip if style.css missing
 
 load_css("style.css")
 
@@ -34,8 +35,14 @@ load_css("style.css")
 genai.configure(api_key="YOUR_API_KEY")  # 🔑 Replace with your key
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ----------------- Whisper Model -----------------
-whisper_model = whisper.load_model("base")  # Local Whisper for STT
+# ----------------- Wav2Vec2 Model -----------------
+@st.cache_resource
+def load_wav2vec2_model():
+    processor = Wav2Vec2Processor.from_pretrained("tugstugi/wav2vec2-large-xlsr-53-mongolian")
+    model = Wav2Vec2ForCTC.from_pretrained("tugstugi/wav2vec2-large-xlsr-53-mongolian")
+    return processor, model
+
+wav2vec_processor, wav2vec_model = load_wav2vec2_model()
 
 # ----------------- Session State Init -----------------
 if "translated_text" not in st.session_state:
@@ -143,22 +150,23 @@ elif input_option == "Voice Recording":
     if wav_audio_data is None:
         st.warning("⚠️ No voice input detected yet.")
     else:
-        # Save temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(wav_audio_data)
             tmp_path = tmp.name
-        
-        try:
-            # -------- Resample to 16kHz --------
-            wav, sr = sf.read(tmp_path)
-            if sr != 16000:
-                wav = librosa.resample(wav.astype(float), orig_sr=sr, target_sr=16000)
-                sf.write(tmp_path, wav, 16000)
 
-            # -------- Transcribe with Whisper --------
-            result = whisper_model.transcribe(tmp_path, language="mn")
-            st.session_state.user_text = result.get("text", "").strip()
-            
+        try:
+            # Load and resample to 16kHz
+            audio, sr = librosa.load(tmp_path, sr=16000)
+            sf.write(tmp_path, audio, 16000)
+
+            # Wav2Vec2 transcription
+            input_values = wav2vec_processor(audio, sampling_rate=16000, return_tensors="pt").input_values
+            logits = wav2vec_model(input_values).logits
+            predicted_ids = torch.argmax(logits, dim=-1)
+            transcription = wav2vec_processor.batch_decode(predicted_ids)[0]
+
+            st.session_state.user_text = transcription.strip()
+
             if st.session_state.user_text:
                 st.success("✅ Voice transcribed successfully!")
                 st.write("📝 **Recognized Text:**", st.session_state.user_text)
