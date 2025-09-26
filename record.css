@@ -1,0 +1,42 @@
+/* Decorated container for voice recorder button */
+.recorder-button-wrapper {
+    margin-bottom: 20px;
+}
+
+/* Recorder Button Elegant Style */
+.recorder-button-wrapper button {
+    background: linear-gradient(135deg, #f6d365, #fda085);
+    color: #fff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 16px 32px !important;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    transition: all 0.35s ease-in-out;
+    width: 100%;
+}
+.recorder-button-wrapper button:hover {
+    background: linear-gradient(135deg, #ff9a9e, #fad0c4);
+    transform: translateY(-4px);
+    box-shadow: 0 9px 22px rgba(0,0,0,0.3);
+}
+
+/* Pulsing Animation While Recording */
+.recorder-button-wrapper button.recording {
+    animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 6px 16px rgba(0,0,0,0.25), 0 0 0 0 rgba(255,154,158,0.5); }
+    70% { box-shadow: 0 6px 16px rgba(0,0,0,0.25), 0 0 0 20px rgba(255,154,158,0); }
+    100% { box-shadow: 0 6px 16px rgba(0,0,0,0.25), 0 0 0 0 rgba(255,154,158,0); }
+}
+
+/* Optional: style the text area boxes */
+.stTextArea textarea {
+    border-radius: 12px !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 10px !important;
+}

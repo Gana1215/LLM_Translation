@@ -2,69 +2,94 @@ import os
 import streamlit as st
 import pandas as pd
 from gtts import gTTS
-import pyttsx3
 import docx
 from PyPDF2 import PdfReader
 from datetime import datetime
 import google.generativeai as genai
 import base64
+import asyncio
+import edge_tts
+import time
+import torch
+import torchaudio
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from st_audiorec import st_audiorec
-import whisper
 import tempfile
 
 # ----------------- Folders -----------------
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "Files_To_Upload")
-SPEECH_FOLDER = os.path.join(os.getcwd(), "Downloaded_Speech")
+SPEECH_FOLDER = os.path.join(os.getcwd(), "Generated_Speech")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(SPEECH_FOLDER, exist_ok=True)
 
 # ----------------- Load CSS -----------------
-def load_css(file_name):
-    try:
-        with open(file_name, "r") as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-    except FileNotFoundError:
-        pass  # skip if style.css missing
+def load_css(*files):
+    for file_name in files:
+        if os.path.exists(file_name):
+            with open(file_name, "r") as f:
+                st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-load_css("style.css")
+load_css("style.css", "record.css")
 
 # ----------------- Gemini API -----------------
-genai.configure(api_key="YOUR_API_KEY")  # 🔑 Replace with your key
-model = genai.GenerativeModel("gemini-1.5-flash")
+genai.configure(api_key="AIzaSyBMj0Yshu5o4YxMp2oLImlseU6lV_FiFjI")  # Replace with your key
+gen_model = genai.GenerativeModel("gemini-2.0-flash")
 
-# ----------------- Whisper Model -----------------
-whisper_model = whisper.load_model("base")  # Local Whisper for STT
+# ----------------- Whisper MN-SP-MINI ASR -----------------
+@st.cache_resource
+def load_mongolian_asr():
+    processor = WhisperProcessor.from_pretrained("./pretrained_models/mn-sp-mini", sampling_rate=16000)
+    model = WhisperForConditionalGeneration.from_pretrained("./pretrained_models/mn-sp-mini")
+    model.eval()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    return processor, model, device
 
-# ----------------- Session State Init -----------------
-if "translated_text" not in st.session_state:
-    st.session_state.translated_text = ""
+asr_processor, asr_model, device = load_mongolian_asr()
+
+# ----------------- Session State -----------------
 if "user_text" not in st.session_state:
     st.session_state.user_text = ""
+if "translated_text" not in st.session_state:
+    st.session_state.translated_text = ""
+if "audio_data" not in st.session_state:
+    st.session_state.audio_data = None
+if "show_recorder" not in st.session_state:
+    st.session_state.show_recorder = False
 
 # ----------------- Helper Functions -----------------
 def translate_text(text, target_language):
-    prompt = f"Translate the following text to {target_language}:\n{text}"
-    response = model.generate_content(prompt)
-    return response.text
-
-def text_to_speech(text, target_lang='en', source_lang='Eng'):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    lang_code = target_lang[:2].capitalize()
-    file_name = f"{source_lang}To{lang_code}{timestamp}.mp3"
-    file_path = os.path.join(SPEECH_FOLDER, file_name)
-
+    prompt = f"Translate the following text to {target_language} naturally and correctly. Output ONLY the translation:\n{text}"
     try:
-        if target_lang.lower() != "mongolian":
+        response = gen_model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"Translation failed: {e}")
+        return ""
+
+async def generate_wav(text, filename, voice="mn-MN-YesuiNeural"):
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(filename)
+
+def text_to_speech(text, target_lang='en'):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = f"speech_{timestamp}.mp3"
+    file_path = os.path.join(SPEECH_FOLDER, file_name)
+    try:
+        if target_lang.lower() != "mn":
             tts = gTTS(text=text, lang=target_lang[:2].lower())
             tts.save(file_path)
         else:
-            engine = pyttsx3.init()
-            engine.save_to_file(text, file_path)
-            engine.runAndWait()
+            asyncio.run(generate_wav(text, file_path))
+            retries = 5
+            while not os.path.exists(file_path) and retries > 0:
+                time.sleep(0.5)
+                retries -= 1
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"TTS file not created: {file_path}")
     except Exception as e:
         st.error(f"Error generating speech: {e}")
         return None
-
     return file_path
 
 def extract_text_from_file(file_path):
@@ -99,7 +124,7 @@ def extract_text_from_file(file_path):
 
 # ----------------- Streamlit UI -----------------
 st.markdown('<h2 class="main-title">🌐 Multi-language Translator & TTS</h2>', unsafe_allow_html=True)
-st.markdown('<h3 class="subtitle">✨ Speak, Translate, and Listen</h3>', unsafe_allow_html=True)
+st.markdown('<h3 class="subtitle">✨ Translate, Speak, and Listen</h3>', unsafe_allow_html=True)
 
 # Language Selection
 language = st.selectbox(
@@ -108,77 +133,78 @@ language = st.selectbox(
     index=0
 )
 
-# Input Method
+# Input Method: Direct Text or File Upload
 input_option = st.radio(
-    "📝 Choose input method:", 
-    ["Direct Text", "Upload File", "Voice Recording"], 
+    "📝 Choose input method:",
+    ["Direct Text", "Upload File"],
     horizontal=True
 )
 
-# --------- Direct Text ---------
 if input_option == "Direct Text":
-    st.session_state.user_text = st.text_area(
-        "✍️ Enter your text here:",
-        value=st.session_state.user_text,
-        height=150
-    )
-
-# --------- Upload File ---------
+    st.session_state.user_text = st.text_area("✍️ Enter text here", value=st.session_state.user_text, height=150)
 elif input_option == "Upload File":
-    uploaded_file = st.file_uploader("📁 Upload your file:", type=["txt","pdf","docx","doc","csv","xls","xlsx"])
+    uploaded_file = st.file_uploader("📁 Upload your file", type=["txt","pdf","docx","doc","csv","xls","xlsx"])
     if uploaded_file is not None:
         save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.session_state.user_text = extract_text_from_file(save_path)
-        st.success(f"✅ File uploaded and text extracted from: {uploaded_file.name}")
+        st.success(f"✅ File uploaded and text extracted: {uploaded_file.name}")
 
-# --------- Voice Recording ---------
-elif input_option == "Voice Recording":
-    st.info("🎤 Click **Start** to begin recording and **Stop** to finish.")
-    wav_audio_data = st_audiorec()
+# ----------------- Recorder Toggle Button -----------------
+button_label = "🎤 Click here to record your voice"
+if st.button(button_label):
+    st.session_state.show_recorder = not st.session_state.show_recorder
 
-    if wav_audio_data is None:
-        st.warning("⚠️ No voice input detected yet.")
-    else:
+# Apply pulsing animation class when recording
+if st.session_state.show_recorder:
+    st.markdown(
+        "<style>.stButton > button:contains('🎤 Click here') { animation: pulse 1.2s infinite; }</style>",
+        unsafe_allow_html=True
+    )
+
+# ----------------- Show Recorder -----------------
+if st.session_state.show_recorder:
+    audio_bytes = st_audiorec()
+    if audio_bytes is not None and len(audio_bytes) > 0:
+        st.session_state.audio_data = audio_bytes
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp.write(wav_audio_data)
+            tmp.write(audio_bytes)
             tmp_path = tmp.name
-        
         try:
-            # Transcribe with Whisper
-            result = whisper_model.transcribe(tmp_path, language="mn")  # Mongolian
-            st.session_state.user_text = result.get("text", "").strip()
-            
-            if st.session_state.user_text:
-                st.success("✅ Voice transcribed successfully!")
-                st.write("📝 **Recognized Text:**", st.session_state.user_text)
-
-                # Auto-translate
-                try:
-                    st.session_state.translated_text = translate_text(st.session_state.user_text, language)
-                    st.success("✅ Translation completed!")
-                except Exception as e:
-                    st.error(f"Translation failed: {e}")
+            waveform, sample_rate = torchaudio.load(tmp_path)
+            if waveform.numel() > 0:
+                if sample_rate != 16000:
+                    resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
+                    waveform = resampler(waveform)
+                input_features = asr_processor(
+                    waveform.squeeze().numpy(), sampling_rate=16000, return_tensors="pt"
+                ).input_features
+                input_features = input_features.to(device)
+                with torch.no_grad():
+                    predicted_ids = asr_model.generate(input_features)
+                transcription = asr_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+                st.session_state.user_text = transcription.strip()
             else:
-                st.warning("⚠️ No speech recognized. Please try again.")
-
+                st.warning("⚠️ Empty audio. Please record again.")
         except Exception as e:
             st.error(f"Audio processing failed: {e}")
 
-# -------- Buttons --------
-col1, col2 = st.columns(2)
+# -------- Display recognized/input text --------
+if st.session_state.user_text.strip():
+    st.markdown("### 📝 Recognized Text")
+    st.text_area("Recognized text", st.session_state.user_text, height=150)
 
+# -------- Translate / TTS Buttons ---------
+col1, col2 = st.columns(2)
 with col1:
     if st.button("🌐 Translate"):
-        if st.session_state.user_text.strip():
-            try:
-                st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+        if st.session_state.user_text.strip() != "":
+            st.session_state.translated_text = translate_text(st.session_state.user_text, language)
+            if st.session_state.translated_text:
                 st.success("✅ Translation completed!")
-            except Exception as e:
-                st.error(f"Translation failed: {e}")
         else:
-            st.error("Please enter text, upload a file, or record voice to translate.")
+            st.error("Please provide text, upload a file, or record voice to translate.")
 
 with col2:
     if st.button("🔊 Convert to Speech"):
@@ -199,4 +225,4 @@ with col2:
 # -------- Display Translated Text --------
 if st.session_state.translated_text:
     st.markdown("### 📝 Translated Text")
-    st.text_area("", st.session_state.translated_text, height=150)
+    st.text_area("Translated text", st.session_state.translated_text, height=150)
