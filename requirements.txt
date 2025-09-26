@@ -1,12 +1,29 @@
+# --- Google Gemini API ---
 google-generativeai
-python-dotenv
-langchain
-PyPDF2
-chromadb
+
+# --- Core AI & Transformers ---
+transformers>=4.44.0
+torch>=2.3.0
+torchaudio>=2.3.0
+accelerate>=0.26.0
+datasets>=2.20.0
+whisper
+
+# --- Audio Processing ---
+soundfile
+librosa
+
+# --- Streamlit UI ---
+streamlit>=1.36.0
+st-audiorec
+
+# --- Text-to-Speech & File Handling ---
 gtts
-python-docx
 pyttsx3
 edge-tts
-streamlit
-streamlit-audiorec
-openai-whisper
+PyPDF2
+python-docx
+openpyxl
+
+# --- Data Handling ---
+pandas
