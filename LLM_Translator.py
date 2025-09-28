@@ -14,6 +14,7 @@ import torch
 import torchaudio
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from st_audiorec import st_audiorec
+import git_lfs  # Python wrapper for Git LFS
 import tempfile
 
 # ----------------- Folders -----------------
@@ -38,11 +39,35 @@ gen_model = genai.GenerativeModel("gemini-2.0-flash")
 # ----------------- Whisper MN-SP-MINI ASR -----------------
 @st.cache_resource
 def load_mongolian_asr():
-    processor = WhisperProcessor.from_pretrained("./pretrained_models/mn-sp-mini", sampling_rate=16000)
-    model = WhisperForConditionalGeneration.from_pretrained("./pretrained_models/mn-sp-mini")
+    model_dir = Path("./pretrained_models/mn-sp-mini")
+    if not model_dir.exists():
+        raise FileNotFoundError(f"Model directory does not exist: {model_dir.resolve()}")
+
+    # List all JSON files in the model directory
+    json_files = [f for f in model_dir.glob("*.json")]
+    for config_file in json_files:
+        with open(config_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+
+        # Detect LFS pointer and download real content
+        if content.startswith("version https://git-lfs.github.com/spec/v1"):
+            lfs_client = git_lfs.GitLFSClient(str(model_dir))
+            pointer = lfs_client.get_pointer(str(config_file))
+            content = lfs_client.download_file(pointer).decode("utf-8")
+
+        # Verify JSON validity
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in {config_file.resolve()}: {e}\nContent preview: {content[:200]}")
+
+    # Load processor and model
+    processor = WhisperProcessor.from_pretrained(model_dir, sampling_rate=16000)
+    model = WhisperForConditionalGeneration.from_pretrained(model_dir)
     model.eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+
     return processor, model, device
 
 asr_processor, asr_model, device = load_mongolian_asr()
