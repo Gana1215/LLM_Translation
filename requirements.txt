@@ -15,7 +15,7 @@ librosa
 
 # --- Streamlit UI ---
 streamlit>=1.36.0
-st-audiorec
+streamlit-audiorec
 
 # --- Text-to-Speech & File Handling ---
 gtts
