@@ -28,7 +28,8 @@ if not CSV_FILE.exists():
     pd.DataFrame(columns=["file_path", "text"]).to_csv(CSV_FILE, index=False)
 
 # ----------------- Initialize Git LFS -----------------
-lfs_client = git_lfs.GitLFSClient(repo_path=str(GIT_FOLDER))
+#lfs_client = git_lfs.GitLFSClient(repo_path=str(GIT_FOLDER))
+lfs_client = git_lfs.GitLFSClient(repo_path=str(MODEL_FOLDER))
 
 # ----------------- App Header -----------------
 st.markdown("<h2 style='color:#4B0082;'>🎤 Voice Recording & Dataset Manager</h2>", unsafe_allow_html=True)
