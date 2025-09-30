@@ -1,3 +1,0 @@
-pretrained_models/mn-sp-mini/** filter=lfs diff=lfs merge=lfs -text
-pretrained_models/mn-sp-mini/* filter=lfs diff=lfs merge=lfs -text
-*.json filter=lfs diff=lfs merge=lfs -text
