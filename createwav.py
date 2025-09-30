@@ -1,12 +1,21 @@
 import os
 import tempfile
 from pathlib import Path
-import json
-import streamlit as st
 import pandas as pd
+import streamlit as st
 import torch
 import torchaudio
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
+
+# ----------------- Ensure transformers is upgraded -----------------
+import subprocess
+import sys
+
+try:
+    from transformers import WhisperProcessor, WhisperForConditionalGeneration
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "transformers>=4.35.0"])
+    from transformers import WhisperProcessor, WhisperForConditionalGeneration
+
 from st_audiorec import st_audiorec
 import git_lfs  # Ensure Git LFS is installed
 
