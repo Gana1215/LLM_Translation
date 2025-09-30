@@ -9,6 +9,7 @@ import subprocess
 import base64
 from st_audiorec import st_audiorec
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+import git_lfs  # Git LFS integration
 
 # ----------------- Ensure transformers is installed -----------------
 try:
@@ -21,21 +22,57 @@ except ImportError:
 GIT_FOLDER = Path("voice_dataset_repo")
 WAV_FOLDER = GIT_FOLDER / "wav_files"
 CSV_FILE = GIT_FOLDER / "mn-model.csv"
+MODEL_FOLDER = Path("pretrained_models/mn-sp-mini")
 os.makedirs(WAV_FOLDER, exist_ok=True)
+
+# Initialize Git LFS client
+lfs_client = git_lfs.GitLFSClient(repo_path=str(GIT_FOLDER))
+
+# ----------------- Helpers for LFS -----------------
+def load_csv_from_lfs(file_path: Path) -> pd.DataFrame:
+    """Load CSV tracked in LFS into DataFrame."""
+    if not file_path.exists():
+        return pd.DataFrame(columns=["file_path", "text"])
+    pointer = lfs_client.get_pointer(str(file_path))
+    file_content = lfs_client.download_file(pointer)
+    return pd.read_csv(pd.compat.StringIO(file_content.decode("utf-8")))
+
+def save_csv_to_lfs(df: pd.DataFrame, file_path: Path):
+    """Save DataFrame as CSV and upload via LFS."""
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(csv_bytes)
+        tmp_path = tmp.name
+    # Upload new version to LFS
+    lfs_client.upload_file(tmp_path, str(file_path))
+    os.remove(tmp_path)
+
+# Initialize CSV if missing
 if not CSV_FILE.exists():
-    pd.DataFrame(columns=["file_path", "text"]).to_csv(CSV_FILE, index=False)
+    save_csv_to_lfs(pd.DataFrame(columns=["file_path", "text"]), CSV_FILE)
 
 # ----------------- App Header -----------------
 st.markdown("<h2 style='color:#4B0082;'>🎤 Voice Recording & Dataset Manager</h2>", unsafe_allow_html=True)
 
-# ----------------- Load ASR Model -----------------
-@st.cache_resource
+# ----------------- Load ASR Model (via LFS) -----------------
+@st.cache_resource(show_spinner="Loading Whisper model...")
 def load_asr():
-    model_dir = Path("./pretrained_models/mn-sp-mini")
-    if not model_dir.exists():
-        raise FileNotFoundError(f"Model directory does not exist: {model_dir.resolve()}")
-    processor = WhisperProcessor.from_pretrained(model_dir, sampling_rate=16000)
-    model = WhisperForConditionalGeneration.from_pretrained(model_dir)
+    # Ensure all files in the model folder are pulled via LFS
+    if not MODEL_FOLDER.exists():
+        os.makedirs(MODEL_FOLDER, exist_ok=True)
+
+    # List all files in repo model folder
+    repo_model_folder = GIT_FOLDER / MODEL_FOLDER
+    if repo_model_folder.exists():
+        for file_path in repo_model_folder.glob("*"):
+            pointer = lfs_client.get_pointer(str(file_path))
+            file_content = lfs_client.download_file(pointer)
+            # Write each file to MODEL_FOLDER
+            with open(MODEL_FOLDER / file_path.name, "wb") as f:
+                f.write(file_content)
+
+    processor = WhisperProcessor.from_pretrained(MODEL_FOLDER, local_files_only=True)
+    model = WhisperForConditionalGeneration.from_pretrained(MODEL_FOLDER, local_files_only=True)
     model.eval()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -94,12 +131,14 @@ if st.session_state.recognized_text.strip() != "":
         wav_path = WAV_FOLDER / wav_filename
         with open(wav_path, "wb") as f:
             f.write(st.session_state.audio_bytes)
-        df = pd.read_csv(CSV_FILE)
+
+        df = load_csv_from_lfs(CSV_FILE)
         df = pd.concat(
             [df, pd.DataFrame({"file_path": [str(wav_path)], "text": [st.session_state.recognized_text]})],
             ignore_index=True,
         )
-        df.to_csv(CSV_FILE, index=False)
+        save_csv_to_lfs(df, CSV_FILE)
+
         st.success(f"Saved: {wav_filename}")
         st.session_state.recognized_text = ""
         st.session_state.audio_bytes = None
@@ -107,8 +146,8 @@ if st.session_state.recognized_text.strip() != "":
 # ----------------- AG Grid Table with Filename and Play/Pause Buttons -----------------
 st.markdown("### 📄 Dataset Manager")
 
-if CSV_FILE.exists():
-    df = pd.read_csv(CSV_FILE)
+df = load_csv_from_lfs(CSV_FILE)
+if not df.empty:
     df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
 
     # Convert WAV files to Base64 for inline play
@@ -182,7 +221,7 @@ if CSV_FILE.exists():
     edited_df = edited_df[["file_path", "text"]]
 
     if st.button("💾 Save Table Edits"):
-        edited_df.to_csv(CSV_FILE, index=False)
+        save_csv_to_lfs(edited_df, CSV_FILE)
         st.success("Dataset updated successfully!")
 else:
     st.info("No dataset yet. Record and save some audio first!")
