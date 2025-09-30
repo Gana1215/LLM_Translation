@@ -36,8 +36,10 @@ load_css("style.css", "record.css")
 
 # ----------------- Gemini API -----------------
 genai.configure(api_key="AIzaSyBMj0Yshu5o4YxMp2oLImlseU6lV_FiFjI")  # Replace with your key
-gen_model = genai.GenerativeModel("gemini-2.0-flash")
-
+gen_model = genai.GenerativeModel("gemini-2.0-flash"
+# INITIALIZE LFS CLIENT                                  
+lfs_client = git_lfs.GitLFSClient(str(model_dir))
+# 
 # ----------------- Whisper MN-SP-MINI ASR -----------------
 @st.cache_resource
 def load_mongolian_asr():
@@ -53,7 +55,6 @@ def load_mongolian_asr():
 
         # Detect LFS pointer and download real content
         if content.startswith("version https://git-lfs.github.com/spec/v1"):
-            lfs_client = git_lfs.GitLFSClient(str(model_dir))
             pointer = lfs_client.get_pointer(str(config_file))
             content = lfs_client.download_file(pointer).decode("utf-8")
 
