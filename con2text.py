@@ -9,13 +9,13 @@ import subprocess
 import base64
 from st_audiorec import st_audiorec
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-import git_lfs  # Git LFS integration
 
 # ----------------- Ensure transformers is installed -----------------
+import subprocess as sp
 try:
     from transformers import WhisperProcessor, WhisperForConditionalGeneration
 except ImportError:
-    subprocess.check_call(["pip", "install", "--upgrade", "transformers>=4.35.0"])
+    sp.check_call(["pip", "install", "--upgrade", "transformers>=4.35.0"])
     from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 # ----------------- Config -----------------
@@ -27,27 +27,32 @@ os.makedirs(WAV_FOLDER, exist_ok=True)
 if not CSV_FILE.exists():
     pd.DataFrame(columns=["file_path", "text"]).to_csv(CSV_FILE, index=False)
 
-# ----------------- Initialize Git LFS -----------------
-#lfs_client = git_lfs.GitLFSClient(repo_path=str(GIT_FOLDER))
-lfs_client = git_lfs.GitLFSClient(repo_path=str(MODEL_FOLDER))
-
 # ----------------- App Header -----------------
 st.markdown("<h2 style='color:#4B0082;'>🎤 Voice Recording & Dataset Manager</h2>", unsafe_allow_html=True)
 
-# ----------------- Load ASR Model via LFS -----------------
+# ----------------- Load ASR Model via Git LFS -----------------
 @st.cache_resource
-def load_asr_lfs():
+def load_asr():
     if not MODEL_FOLDER.exists():
-        os.makedirs(MODEL_FOLDER, exist_ok=True)
+        raise FileNotFoundError(f"Model directory not found: {MODEL_FOLDER.resolve()}")
 
-    repo_model_folder = GIT_FOLDER / MODEL_FOLDER
-    if repo_model_folder.exists():
-        for file_path in repo_model_folder.glob("*"):
-            pointer = lfs_client.get_pointer(str(file_path))
-            content = lfs_client.download_file(pointer)
-            with open(MODEL_FOLDER / file_path.name, "wb") as f:
-                f.write(content)
+    # Initialize Git LFS
+    try:
+        subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "pull"], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Git LFS error: {e.stderr.decode()}")
+        raise
 
+    # Optional: check for leftover pointer files
+    for json_file in MODEL_FOLDER.glob("*.json"):
+        content = json_file.read_text(encoding="utf-8").strip()
+        if content.startswith("version https://git-lfs.github.com/spec/v1"):
+            raise RuntimeError(
+                f"LFS pointer detected in {json_file}. LFS pull may have failed."
+            )
+
+    # Load processor and model
     processor = WhisperProcessor.from_pretrained(MODEL_FOLDER, sampling_rate=16000)
     model = WhisperForConditionalGeneration.from_pretrained(MODEL_FOLDER)
     model.eval()
@@ -55,7 +60,7 @@ def load_asr_lfs():
     model.to(device)
     return processor, model, device
 
-processor, model, device = load_asr_lfs()
+processor, model, device = load_asr()
 
 # ----------------- Session State -----------------
 if "recognized_text" not in st.session_state:
@@ -137,6 +142,7 @@ if CSV_FILE.exists():
 
     grid_df = df[["file_name", "text", "play_url"]].copy()
 
+    # JS for play/pause toggle
     cell_renderer = JsCode("""
     class BtnCellRenderer {
         init(params) {
