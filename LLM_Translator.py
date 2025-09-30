@@ -36,7 +36,7 @@ load_css("style.css", "record.css")
 
 # ----------------- Gemini API -----------------
 genai.configure(api_key="AIzaSyBMj0Yshu5o4YxMp2oLImlseU6lV_FiFjI")  # Replace with your key
-gen_model = genai.GenerativeModel("gemini-2.0-flash"
+gen_model = genai.GenerativeModel("gemini-2.0-flash")
 # INITIALIZE LFS CLIENT                                  
 lfs_client = git_lfs.GitLFSClient(str(model_dir))
 # 
