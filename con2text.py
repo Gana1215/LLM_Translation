@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+import platform
 import pandas as pd
 import streamlit as st
 import torch
@@ -30,30 +31,58 @@ if not CSV_FILE.exists():
 # ----------------- App Header -----------------
 st.markdown("<h2 style='color:#4B0082;'>🎤 Voice Recording & Dataset Manager</h2>", unsafe_allow_html=True)
 
-# ----------------- Load ASR Model via Git LFS -----------------
+# ----------------- Git LFS Utilities -----------------
+def ensure_git_lfs():
+    """Ensure Git LFS is installed and initialized (auto-install on macOS)."""
+    try:
+        subprocess.run(["git", "lfs", "version"], check=True, capture_output=True)
+        st.info("Git LFS is already installed ✅")
+    except subprocess.CalledProcessError:
+        st.warning("Git LFS not found! Attempting installation...")
+        if platform.system() == "Darwin":  # macOS
+            try:
+                subprocess.run(["brew", "install", "git-lfs"], check=True)
+                subprocess.run(["git", "lfs", "install"], check=True)
+                st.success("Git LFS installed successfully via Homebrew! 🎉")
+            except subprocess.CalledProcessError as e:
+                st.error(f"Automatic installation failed: {e}")
+        else:
+            st.error(
+                "Automatic Git LFS installation only implemented for macOS. "
+                "Please install manually: https://git-lfs.github.com/"
+            )
+
+def fetch_lfs_files(folder: Path):
+    """Fetch and checkout LFS files to get real content."""
+    try:
+        subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(folder.parent), "lfs", "fetch", "--all"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(folder.parent), "lfs", "checkout"], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Git LFS error: {e.stderr.decode()}")
+        raise
+
+def is_pointer_file(path: Path):
+    """Check if file is still an LFS pointer."""
+    try:
+        content = path.read_text(encoding="utf-8").strip()
+        return content.startswith("version https://git-lfs.github.com/spec/v1")
+    except Exception:
+        return False
+
+# ----------------- Load ASR Model -----------------
 @st.cache_resource
 def load_asr():
     if not MODEL_FOLDER.exists():
         raise FileNotFoundError(f"Model directory not found: {MODEL_FOLDER.resolve()}")
 
-    # Ensure Git LFS is initialized
-    try:
-        subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
-        # Fetch all LFS objects
-        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "fetch", "--all"], check=True, capture_output=True)
-        # Replace pointer files in working directory
-        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "checkout"], check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        st.error(f"Git LFS error: {e.stderr.decode()}")
-        raise
+    ensure_git_lfs()
+    fetch_lfs_files(MODEL_FOLDER)
 
-    # Optional: verify no pointer files remain
+    # Verify no pointer files remain
     for json_file in MODEL_FOLDER.glob("*.json"):
-        content = json_file.read_text(encoding="utf-8").strip()
-        if content.startswith("version https://git-lfs.github.com/spec/v1"):
-            raise RuntimeError(
-                f"LFS pointer detected in {json_file}. LFS fetch/checkout may have failed."
-            )
+        if is_pointer_file(json_file):
+            raise RuntimeError(f"LFS pointer detected in {json_file}. Fetch/checkout may have failed.")
 
     # Load processor and model
     processor = WhisperProcessor.from_pretrained(MODEL_FOLDER, sampling_rate=16000)
@@ -133,7 +162,6 @@ if CSV_FILE.exists():
     df = pd.read_csv(CSV_FILE)
     df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
 
-    # Convert WAV files to Base64 for inline play
     def path_to_base64(path):
         if not Path(path).exists():
             return ""
@@ -142,10 +170,8 @@ if CSV_FILE.exists():
         return f"data:audio/wav;base64,{encoded}"
 
     df["play_url"] = df["file_path"].apply(path_to_base64)
-
     grid_df = df[["file_name", "text", "play_url"]].copy()
 
-    # JS for play/pause toggle
     cell_renderer = JsCode("""
     class BtnCellRenderer {
         init(params) {
