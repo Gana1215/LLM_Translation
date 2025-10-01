@@ -25,7 +25,7 @@ edge-tts
 PyPDF2
 python-docx
 openpyxl
-git_lfs
+pydrive2
 giftless-client
 # --- Data Handling ---
 pandas
