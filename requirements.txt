@@ -29,3 +29,9 @@ pydrive2
 giftless-client
 # --- Data Handling ---
 pandas
+
+#Auth
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
