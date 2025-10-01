@@ -26,6 +26,6 @@ PyPDF2
 python-docx
 openpyxl
 git_lfs
-
+giftless-client
 # --- Data Handling ---
 pandas
