@@ -1,7 +1,6 @@
 import os
 import tempfile
 from pathlib import Path
-import platform
 import pandas as pd
 import streamlit as st
 import torch
@@ -32,30 +31,9 @@ if not CSV_FILE.exists():
 st.markdown("<h2 style='color:#4B0082;'>🎤 Voice Recording & Dataset Manager</h2>", unsafe_allow_html=True)
 
 # ----------------- Git LFS Utilities -----------------
-def ensure_git_lfs():
-    """Ensure Git LFS is installed and initialized (auto-install on macOS)."""
-    try:
-        subprocess.run(["git", "lfs", "version"], check=True, capture_output=True)
-        st.info("Git LFS is already installed ✅")
-    except subprocess.CalledProcessError:
-        st.warning("Git LFS not found! Attempting installation...")
-        if platform.system() == "Darwin":  # macOS
-            try:
-                subprocess.run(["brew", "install", "git-lfs"], check=True)
-                subprocess.run(["git", "lfs", "install"], check=True)
-                st.success("Git LFS installed successfully via Homebrew! 🎉")
-            except subprocess.CalledProcessError as e:
-                st.error(f"Automatic installation failed: {e}")
-        else:
-            st.error(
-                "Automatic Git LFS installation only implemented for macOS. "
-                "Please install manually: https://git-lfs.github.com/"
-            )
-
 def fetch_lfs_files(folder: Path):
-    """Fetch and checkout LFS files to get real content."""
+    """Fetch and checkout LFS files to get real content (assumes Git LFS is installed)."""
     try:
-        subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
         subprocess.run(["git", "-C", str(folder.parent), "lfs", "fetch", "--all"], check=True, capture_output=True)
         subprocess.run(["git", "-C", str(folder.parent), "lfs", "checkout"], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
@@ -74,9 +52,12 @@ def is_pointer_file(path: Path):
 @st.cache_resource
 def load_asr():
     if not MODEL_FOLDER.exists():
-        raise FileNotFoundError(f"Model directory not found: {MODEL_FOLDER.resolve()}")
-
-    ensure_git_lfs()
+        # Clone repo branch if MODEL_FOLDER doesn't exist
+        repo_url = "https://github.com/Gana1215/LLM_Translation.git"
+        branch = "add-speech-to-text"
+        subprocess.run(["git", "clone", "--branch", branch, repo_url, str(MODEL_FOLDER.parent)], check=True)
+    
+    # Fetch LFS content
     fetch_lfs_files(MODEL_FOLDER)
 
     # Verify no pointer files remain
