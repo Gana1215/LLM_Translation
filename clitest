@@ -1,0 +1,11 @@
+import shutil
+
+if shutil.which("git"):
+    import subprocess
+    try:
+        result = subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, check=True)
+        st.success(f"Git LFS CLI is installed: {result.stdout.strip()}")
+    except subprocess.CalledProcessError:
+        st.warning("Git LFS CLI is NOT installed!")
+else:
+    st.error("Git is not installed, so Git LFS cannot work!")
