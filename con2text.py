@@ -36,20 +36,23 @@ def load_asr():
     if not MODEL_FOLDER.exists():
         raise FileNotFoundError(f"Model directory not found: {MODEL_FOLDER.resolve()}")
 
-    # Initialize Git LFS
+    # Ensure Git LFS is initialized
     try:
         subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "pull"], check=True, capture_output=True)
+        # Fetch all LFS objects
+        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "fetch", "--all"], check=True, capture_output=True)
+        # Replace pointer files in working directory
+        subprocess.run(["git", "-C", str(MODEL_FOLDER.parent), "lfs", "checkout"], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         st.error(f"Git LFS error: {e.stderr.decode()}")
         raise
 
-    # Optional: check for leftover pointer files
+    # Optional: verify no pointer files remain
     for json_file in MODEL_FOLDER.glob("*.json"):
         content = json_file.read_text(encoding="utf-8").strip()
         if content.startswith("version https://git-lfs.github.com/spec/v1"):
             raise RuntimeError(
-                f"LFS pointer detected in {json_file}. LFS pull may have failed."
+                f"LFS pointer detected in {json_file}. LFS fetch/checkout may have failed."
             )
 
     # Load processor and model
